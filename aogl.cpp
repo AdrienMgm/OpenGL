@@ -154,7 +154,9 @@ int main( int argc, char **argv )
     camera_defaults(camera);
     GUIStates guiStates;
     init_gui_states(guiStates);
-    float dummySlider = 0.f;
+    float positionSlider[6] = {3, 0, 0, -3, 0, 0};
+    float rgbSlider[6] = {0.7, 0.2, 0.2, 0.3, 0.2, 0.9};
+    float intensitySlider[2] = {0.5, 1.0};
 
     // Try to load and compile shaders
     GLuint vertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "aogl.vert");
@@ -283,9 +285,13 @@ int main( int argc, char **argv )
     GLuint diffuseLocation = glGetUniformLocation(programObject, "Diffuse");
     GLuint speculaireLocation = glGetUniformLocation(programObject, "Speculaire");
     GLuint cameraPositionLocation = glGetUniformLocation(programObject, "CameraPosition");
+    GLuint lightPositionLocation = glGetUniformLocation(programObject, "PointLightPosition");
+    GLuint lightColorLocation = glGetUniformLocation(programObject, "PointLightColor");
+    GLuint lightIntensityLocation = glGetUniformLocation(programObject, "PointLightIntensity");
 
     glProgramUniform1i(programObject, diffuseLocation, 0);
     glProgramUniform1i(programObject, speculaireLocation, 1);
+    glProgramUniform3fv(programObject, lightPositionLocation, 2, positionSlider);
 
     do
     {
@@ -373,6 +379,8 @@ int main( int argc, char **argv )
 
         // Upload uniforms
         glProgramUniformMatrix4fv(programObject, mvpLocation, 1, 0, glm::value_ptr(mvp));
+        glProgramUniform3fv(programObject, lightColorLocation, 2, rgbSlider);
+        glProgramUniform1fv(programObject, lightIntensityLocation, 2, intensitySlider);
 
         // Bind texture
         glActiveTexture(GL_TEXTURE0);
@@ -414,7 +422,18 @@ int main( int argc, char **argv )
         imguiBeginScrollArea("aogl", width - 210, height - 310, 200, 300, &logScroll);
         sprintf(lineBuffer, "FPS %f", fps);
         imguiLabel(lineBuffer);
-        imguiSlider("Dummy", &dummySlider, 0.0, 3.0, 0.1);
+        char title1[64] = {"PointLight_1"};
+        imguiLabel(title1);
+        imguiSlider("Intensity", &intensitySlider[0], 0.0, 1.0, 0.1);
+        imguiSlider("Red", &rgbSlider[0], 0.0, 1.0, 0.1);
+        imguiSlider("Green", &rgbSlider[1], 0.0, 1.0, 0.1);
+        imguiSlider("Blue", &rgbSlider[2], 0.0, 1.0, 0.1);
+        char title2[64] = {"PointLight_2"};
+        imguiLabel(title2);
+        imguiSlider("Intensity", &intensitySlider[1], 0.0, 1.0, 0.1);
+        imguiSlider("Red", &rgbSlider[3], 0.0, 1.0, 0.1);
+        imguiSlider("Green", &rgbSlider[4], 0.0, 1.0, 0.1);
+        imguiSlider("Blue", &rgbSlider[5], 0.0, 1.0, 0.1);
 
         imguiEndScrollArea();
         imguiEndFrame();
