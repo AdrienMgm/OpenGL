@@ -3,6 +3,7 @@
 #define POSITION	0
 #define NORMAL		1
 #define TEXCOORD	2
+#define LIGHTS		3
 
 precision highp float;
 precision highp int;

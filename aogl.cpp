@@ -18,6 +18,8 @@
 #include "glm/gtc/matrix_transform.hpp" // glm::translate, glm::rotate, glm::scale, glm::perspective
 #include "glm/gtc/type_ptr.hpp" // glm::value_ptr
 
+#include <vector>
+
 #ifndef DEBUG_PRINT
 #define DEBUG_PRINT 1
 #endif
@@ -63,6 +65,32 @@ void camera_zoom(Camera & c, float factor);
 void camera_turn(Camera & c, float phi, float theta);
 void camera_pan(Camera & c, float x, float y);
 
+struct PointLight
+{
+    glm::vec3 position;
+    int padding;
+    glm::vec3 color;
+    float intensity;
+};
+
+struct DirectionalLight
+{
+    glm::vec3 position;
+    int padding;
+    glm::vec3 color;
+    float intensity;
+};
+
+struct SpotLight
+{
+    glm::vec3 position;
+    float angle;
+    glm::vec3 direction;
+    float penumbraAngle;
+    glm::vec3 color;
+    float intensity;
+};
+
 struct GUIStates
 {
     bool panLock;
@@ -80,11 +108,17 @@ struct GUIStates
 const float GUIStates::MOUSE_PAN_SPEED = 0.001f;
 const float GUIStates::MOUSE_ZOOM_SPEED = 0.05f;
 const float GUIStates::MOUSE_TURN_SPEED = 0.005f;
+
 void init_gui_states(GUIStates & guiStates);
 
+void mapCubeToSphere(glm::vec3& position);
+
+std::vector<float> createCube(const glm::vec3& center, const float& size, const int& nbVerticesPerSide = 2);
 
 int main( int argc, char **argv )
 {
+    assert(sizeof(glm::vec3) == sizeof(GLfloat) * 3 && "glm::vec3 != 3 * GLfloat");
+
     int width = 1024, height= 768;
     float widthf = (float) width, heightf = (float) height;
     double t;
@@ -130,9 +164,9 @@ int main( int argc, char **argv )
     GLenum err = glewInit();
     if (GLEW_OK != err)
     {
-          /* Problem: glewInit failed, something is seriously wrong. */
-          fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
-          exit( EXIT_FAILURE );
+        /* Problem: glewInit failed, something is seriously wrong. */
+        fprintf(stderr, "Error: %s\n", glewGetErrorString(err));
+        exit( EXIT_FAILURE );
     }
 
     // Ensure we can capture the escape key being pressed below
@@ -149,14 +183,25 @@ int main( int argc, char **argv )
         exit(EXIT_FAILURE);
     }
 
-    // Init viewer structures
+    ////////////////////////////
+    // Init viewer structures //
+    ////////////////////////////
+    // Camera
     Camera camera;
     camera_defaults(camera);
+
+    //Light
+    // float positionLightSlider[9] = {3, 0, 0, -3, 0, 0, -20, 20, 0};
+    // float rgbSlider[9] = {0.7, 0.2, 0.2, 0.3, 0.2, 0.9, 0.6, 0.1, 0.6};
+    // float intensitySlider[3] = {0.5, 1.0, 0.8};
+
+    // GUI
     GUIStates guiStates;
     init_gui_states(guiStates);
-    float positionSlider[6] = {3, 0, 0, -3, 0, 0};
-    float rgbSlider[6] = {0.7, 0.2, 0.2, 0.3, 0.2, 0.9};
-    float intensitySlider[2] = {0.5, 1.0};
+
+    /////////////////////////////////////////////
+    //  SHADERS
+    /////////////////////////////////////////////
 
     // Try to load and compile shaders
     GLuint vertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "aogl.vert");
@@ -178,6 +223,21 @@ int main( int argc, char **argv )
 
     // Viewport 
     glViewport( 0, 0, width, height  );
+
+    //////////////////////////////////////////////////////
+    // Objects & VAO / VBO
+    //////////////////////////////////////////////////////
+
+    // std::vector<float> v = createCube(glm::vec3(0), 2, 3);
+    // std::cout << "[" << std::endl;
+    // for(int i = 0; i < v.size(); ++i)
+    // {
+    //     if((i+1) % 3 == 0)
+    //         std::cout << v[i] << std::endl;
+    //     else
+    //         std::cout << v[i] << ", ";
+    // }
+    // std::cout << "]" << std::endl;
 
     // Create a Vertex Array Object
     GLuint vao[2];
@@ -251,7 +311,18 @@ int main( int argc, char **argv )
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
     glBufferData(GL_ARRAY_BUFFER, sizeof(plane_uvs), plane_uvs, GL_STATIC_DRAW);
 
-    // Textures
+    // Generate Shader Storage Objects
+    GLuint ssbo[3];
+    glGenBuffers(3, ssbo);
+
+    // Nb Lights
+    int pointLightCount = 2;
+    int directionalLightCount = 1;
+    int spotLightCount = 1;
+
+    ///////////////////////////////////////////////////
+    //  TEXTURES
+    ///////////////////////////////////////////////////
     int x;
     int y;
     int comp;
@@ -270,29 +341,32 @@ int main( int argc, char **argv )
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     // Texture 2
-    unsigned char* speculaire = stbi_load("textures/spnza_bricks_a_spec.tga", &x, &y, &comp, 3);
+    unsigned char* specular = stbi_load("textures/spnza_bricks_a_spec.tga", &x, &y, &comp, 3);
 
     glBindTexture(GL_TEXTURE_2D, textures[1]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x, y, 0, GL_RGB, GL_UNSIGNED_BYTE, speculaire);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x, y, 0, GL_RGB, GL_UNSIGNED_BYTE, specular);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // Initialize uniform location
+    ////////////////////////////////////////
+    // Initialize UNIFORM location
+    ////////////////////////////////////////
     GLuint timeLocation = glGetUniformLocation(programObject, "Time");
     GLuint objectLocation = glGetUniformLocation(programObject, "Object");
     GLuint diffuseLocation = glGetUniformLocation(programObject, "Diffuse");
-    GLuint speculaireLocation = glGetUniformLocation(programObject, "Speculaire");
+    GLuint specularLocation = glGetUniformLocation(programObject, "Specular");
     GLuint cameraPositionLocation = glGetUniformLocation(programObject, "CameraPosition");
-    GLuint lightPositionLocation = glGetUniformLocation(programObject, "PointLightPosition");
-    GLuint lightColorLocation = glGetUniformLocation(programObject, "PointLightColor");
-    GLuint lightIntensityLocation = glGetUniformLocation(programObject, "PointLightIntensity");
+    GLuint specularPowerLocation = glGetUniformLocation(programObject, "SpecularPower");
 
     glProgramUniform1i(programObject, diffuseLocation, 0);
-    glProgramUniform1i(programObject, speculaireLocation, 1);
-    glProgramUniform3fv(programObject, lightPositionLocation, 2, positionSlider);
+    glProgramUniform1i(programObject, specularLocation, 1);
+    glProgramUniform1f(programObject, specularPowerLocation, 20);
 
+    ///////////////////////////////
+    //  The LOOOOOP
+    ///////////////////////////////
     do
     {
         t = glfwGetTime();
@@ -359,6 +433,68 @@ int main( int argc, char **argv )
             guiStates.lockPositionY = mousey;
         }
 
+        //Lights buffer storage
+        int pointLightBufferSize = 4 * sizeof(int) + sizeof(PointLight) * pointLightCount;
+        int directionalLightBufferSize = 4 * sizeof(int) + sizeof(DirectionalLight) * directionalLightCount;
+        int spotLightBufferSize = 4 * sizeof(int) + sizeof(SpotLight) * spotLightCount;
+
+        void * lightBuffer = NULL;
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[0]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, pointLightBufferSize, 0, GL_DYNAMIC_COPY);
+        lightBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        ((int*) lightBuffer)[0] = pointLightCount;
+        for (int i = 0; i < pointLightCount; ++i)
+        {
+            PointLight p =
+            {
+                glm::vec3(10 * i + fabsf(cos(M_PI * i * t)), 1, 10 * i + fabsf(sin(M_PI * i * t))), 0,
+                glm::vec3(fabsf(cos(i*2.f)), 1.-fabsf(sinf(i)) , 0.5f + 0.5f-fabsf(cosf(i)) ),
+                1.0
+            };
+            ((PointLight*) ((int*) lightBuffer + 4))[i] = p;
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[1]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, directionalLightBufferSize, 0, GL_DYNAMIC_COPY);
+        lightBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        ((int*) lightBuffer)[0] = directionalLightCount;
+        for (int i = 0; i < directionalLightCount; ++i)
+        {
+            DirectionalLight p =
+            {
+                glm::vec3(-3, 1, 0), 0,
+                glm::vec3(0.3, 0.3, 0.9),  
+                1.
+            };
+            ((DirectionalLight*) ((int*) lightBuffer + 4))[i] = p;
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[2]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, spotLightBufferSize, 0, GL_DYNAMIC_COPY);
+        lightBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        ((int*) lightBuffer)[0] = spotLightCount;
+        for (int i = 0; i < spotLightCount; ++i)
+        {
+            SpotLight p =
+            {
+                glm::vec3(-5, 1, 0),
+                30,
+                glm::vec3(0, -1, 0),
+                .5,
+                glm::vec3(0.2, 0.9, 0.2),  
+                1.
+            };
+            ((SpotLight*) ((int*) lightBuffer + 4))[i] = p;
+        }
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, ssbo[0], 0, pointLightBufferSize);
+        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, ssbo[1], 0, directionalLightBufferSize);
+        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2, ssbo[2], 0, spotLightBufferSize);
+
         // Default states
         glEnable(GL_DEPTH_TEST);
 
@@ -379,8 +515,6 @@ int main( int argc, char **argv )
 
         // Upload uniforms
         glProgramUniformMatrix4fv(programObject, mvpLocation, 1, 0, glm::value_ptr(mvp));
-        glProgramUniform3fv(programObject, lightColorLocation, 2, rgbSlider);
-        glProgramUniform1fv(programObject, lightIntensityLocation, 2, intensitySlider);
 
         // Bind texture
         glActiveTexture(GL_TEXTURE0);
@@ -422,18 +556,18 @@ int main( int argc, char **argv )
         imguiBeginScrollArea("aogl", width - 210, height - 310, 200, 300, &logScroll);
         sprintf(lineBuffer, "FPS %f", fps);
         imguiLabel(lineBuffer);
-        char title1[64] = {"PointLight_1"};
-        imguiLabel(title1);
-        imguiSlider("Intensity", &intensitySlider[0], 0.0, 1.0, 0.1);
-        imguiSlider("Red", &rgbSlider[0], 0.0, 1.0, 0.1);
-        imguiSlider("Green", &rgbSlider[1], 0.0, 1.0, 0.1);
-        imguiSlider("Blue", &rgbSlider[2], 0.0, 1.0, 0.1);
-        char title2[64] = {"PointLight_2"};
-        imguiLabel(title2);
-        imguiSlider("Intensity", &intensitySlider[1], 0.0, 1.0, 0.1);
-        imguiSlider("Red", &rgbSlider[3], 0.0, 1.0, 0.1);
-        imguiSlider("Green", &rgbSlider[4], 0.0, 1.0, 0.1);
-        imguiSlider("Blue", &rgbSlider[5], 0.0, 1.0, 0.1);
+        // char title1[64] = {"PointLight_1"};
+        // imguiLabel(title1);
+        // imguiSlider("Intensity", &intensitySlider[0], 0.0, 1.0, 0.1);
+        // imguiSlider("Red", &rgbSlider[0], 0.0, 1.0, 0.1);
+        // imguiSlider("Green", &rgbSlider[1], 0.0, 1.0, 0.1);
+        // imguiSlider("Blue", &rgbSlider[2], 0.0, 1.0, 0.1);
+        // char title2[64] = {"PointLight_2"};
+        // imguiLabel(title2);
+        // imguiSlider("Intensity", &intensitySlider[1], 0.0, 1.0, 0.1);
+        // imguiSlider("Red", &rgbSlider[3], 0.0, 1.0, 0.1);
+        // imguiSlider("Green", &rgbSlider[4], 0.0, 1.0, 0.1);
+        // imguiSlider("Blue", &rgbSlider[5], 0.0, 1.0, 0.1);
 
         imguiEndScrollArea();
         imguiEndFrame();
@@ -661,4 +795,121 @@ void init_gui_states(GUIStates & guiStates)
     guiStates.camera = 0;
     guiStates.time = 0.0;
     guiStates.playing = false;
+}
+
+// For every vertex in the mesh
+// Where vertices form 6 grids making a cube
+// With bounds of [-1, -1, -1] to [1, 1, 1]
+void mapCubeToSphere(glm::vec3& position)
+{
+    float x2 = position.x * position.x;
+    float y2 = position.y * position.y;
+    float z2 = position.z * position.z;
+
+    position.x = position.x * sqrt( 1.0f - ( y2 * 0.5f ) - ( z2 * 0.5f ) + ( (y2 * z2) / 3.0f ) );
+    position.y = position.y * sqrt( 1.0f - ( z2 * 0.5f ) - ( x2 * 0.5f ) + ( (z2 * x2) / 3.0f ) );
+    position.z = position.z * sqrt( 1.0f - ( x2 * 0.5f ) - ( y2 * 0.5f ) + ( (x2 * y2) / 3.0f ) );
+}
+
+std::vector<float> createCube(const glm::vec3& center, const float& size, const int& nbVerticesPerSide)
+{
+    assert(nbVerticesPerSide >= 2 && "nbVerticesPerSide must be >= 2");
+
+    int nbVertices = (nbVerticesPerSide * nbVerticesPerSide * 6) - 16 - (12 * nbVerticesPerSide - 24); // compute nb vertices = (vertices per face) - ((corners) + (middle edge)) because edges are compute multiple times
+
+    std::vector<float> vertices;
+
+    std::vector<glm::vec2> plan;
+
+    // Compute plan without last column
+    for (int y = 0; y < nbVerticesPerSide; ++y)
+    {
+        for (int x = 0; x < nbVerticesPerSide; ++x)
+        {
+            plan.push_back(glm::vec2((float)(x * size) / (float)(nbVerticesPerSide - 1), (float)(y * size) / (float)(nbVerticesPerSide - 1)));
+        }
+    }
+
+    // Front
+    glm::vec3 position = glm::vec3(center.x - (size/2), center.y - (size/2), size/2);
+    
+    for (int y = 0; y < nbVerticesPerSide; ++y)
+    {
+        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
+        {
+            vertices.push_back(position.x + plan[y*nbVerticesPerSide+x].x);
+            vertices.push_back(position.y + plan[y*nbVerticesPerSide+x].y);
+            vertices.push_back(position.z);
+        }
+    }
+
+    // Right
+    position = glm::vec3(size/2, center.y - (size/2), center.z + (size/2));
+    
+    for (int y = 0; y < nbVerticesPerSide; ++y)
+    {
+        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
+        {   
+            vertices.push_back(position.x);
+            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.y);
+            vertices.push_back(position.z - plan[y*nbVerticesPerSide+x].x);
+        }
+    }
+
+    // Back
+    position = glm::vec3(center.x + (size/2), center.y - (size/2), -size/2);
+    
+    for (int y = 0; y < nbVerticesPerSide; ++y)
+    {
+        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
+        {
+            vertices.push_back(position.x - plan[y*nbVerticesPerSide+x].x);
+            vertices.push_back(position.y + plan[y*nbVerticesPerSide+x].y);
+            vertices.push_back(position.z);
+        }
+    }
+
+    // Left
+    position = glm::vec3(-size/2, center.y - (size/2), center.z - (size/2));
+    
+    for (int y = 0; y < nbVerticesPerSide; ++y)
+    {
+        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
+        {
+            vertices.push_back(position.x);
+            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.y);
+            vertices.push_back(plan[y*nbVerticesPerSide+x].x + position.z);
+        }
+    }
+
+    // Up
+    position = glm::vec3(center.x + (size/2), size/2, center.z - (size/2));
+    
+    for (int y = 1; y < nbVerticesPerSide - 1; ++y)
+    {
+        for (int x = 1; x < nbVerticesPerSide - 1; ++x)
+        {
+            vertices.push_back(position.x - plan[y*nbVerticesPerSide+x].x);
+            vertices.push_back(position.y);
+            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.z);
+        }
+    }
+
+    // Down
+    position = glm::vec3(center.x - (size/2), -size/2, center.z + (size/2));
+    
+    for (int y = 1; y < nbVerticesPerSide - 1; ++y)
+    {
+        for (int x = 1; x < nbVerticesPerSide - 1; ++x)
+        {
+            vertices.push_back(plan[y*nbVerticesPerSide+x].x + position.x);
+            vertices.push_back(position.y);
+            vertices.push_back(position.z - plan[y*nbVerticesPerSide+x].y);
+        }
+    }
+
+    // std::cout << "vertices : " << vertices.size() << " & " << "nbVertices : " << nbVertices << std::endl;
+    assert(vertices.size()/3 == nbVertices && "fill vertices problem index != nbVectices");
+
+    return vertices;
 }
