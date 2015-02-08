@@ -111,10 +111,6 @@ const float GUIStates::MOUSE_TURN_SPEED = 0.005f;
 
 void init_gui_states(GUIStates & guiStates);
 
-void mapCubeToSphere(glm::vec3& position);
-
-std::vector<float> createCube(const glm::vec3& center, const float& size, const int& nbVerticesPerSide = 2);
-
 int main( int argc, char **argv )
 {
     assert(sizeof(glm::vec3) == sizeof(GLfloat) * 3 && "glm::vec3 != 3 * GLfloat");
@@ -227,17 +223,6 @@ int main( int argc, char **argv )
     //////////////////////////////////////////////////////
     // Objects & VAO / VBO
     //////////////////////////////////////////////////////
-
-    // std::vector<float> v = createCube(glm::vec3(0), 2, 3);
-    // std::cout << "[" << std::endl;
-    // for(int i = 0; i < v.size(); ++i)
-    // {
-    //     if((i+1) % 3 == 0)
-    //         std::cout << v[i] << std::endl;
-    //     else
-    //         std::cout << v[i] << ", ";
-    // }
-    // std::cout << "]" << std::endl;
 
     // Create a Vertex Array Object
     GLuint vao[2];
@@ -795,121 +780,4 @@ void init_gui_states(GUIStates & guiStates)
     guiStates.camera = 0;
     guiStates.time = 0.0;
     guiStates.playing = false;
-}
-
-// For every vertex in the mesh
-// Where vertices form 6 grids making a cube
-// With bounds of [-1, -1, -1] to [1, 1, 1]
-void mapCubeToSphere(glm::vec3& position)
-{
-    float x2 = position.x * position.x;
-    float y2 = position.y * position.y;
-    float z2 = position.z * position.z;
-
-    position.x = position.x * sqrt( 1.0f - ( y2 * 0.5f ) - ( z2 * 0.5f ) + ( (y2 * z2) / 3.0f ) );
-    position.y = position.y * sqrt( 1.0f - ( z2 * 0.5f ) - ( x2 * 0.5f ) + ( (z2 * x2) / 3.0f ) );
-    position.z = position.z * sqrt( 1.0f - ( x2 * 0.5f ) - ( y2 * 0.5f ) + ( (x2 * y2) / 3.0f ) );
-}
-
-std::vector<float> createCube(const glm::vec3& center, const float& size, const int& nbVerticesPerSide)
-{
-    assert(nbVerticesPerSide >= 2 && "nbVerticesPerSide must be >= 2");
-
-    int nbVertices = (nbVerticesPerSide * nbVerticesPerSide * 6) - 16 - (12 * nbVerticesPerSide - 24); // compute nb vertices = (vertices per face) - ((corners) + (middle edge)) because edges are compute multiple times
-
-    std::vector<float> vertices;
-
-    std::vector<glm::vec2> plan;
-
-    // Compute plan without last column
-    for (int y = 0; y < nbVerticesPerSide; ++y)
-    {
-        for (int x = 0; x < nbVerticesPerSide; ++x)
-        {
-            plan.push_back(glm::vec2((float)(x * size) / (float)(nbVerticesPerSide - 1), (float)(y * size) / (float)(nbVerticesPerSide - 1)));
-        }
-    }
-
-    // Front
-    glm::vec3 position = glm::vec3(center.x - (size/2), center.y - (size/2), size/2);
-    
-    for (int y = 0; y < nbVerticesPerSide; ++y)
-    {
-        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
-        {
-            vertices.push_back(position.x + plan[y*nbVerticesPerSide+x].x);
-            vertices.push_back(position.y + plan[y*nbVerticesPerSide+x].y);
-            vertices.push_back(position.z);
-        }
-    }
-
-    // Right
-    position = glm::vec3(size/2, center.y - (size/2), center.z + (size/2));
-    
-    for (int y = 0; y < nbVerticesPerSide; ++y)
-    {
-        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
-        {   
-            vertices.push_back(position.x);
-            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.y);
-            vertices.push_back(position.z - plan[y*nbVerticesPerSide+x].x);
-        }
-    }
-
-    // Back
-    position = glm::vec3(center.x + (size/2), center.y - (size/2), -size/2);
-    
-    for (int y = 0; y < nbVerticesPerSide; ++y)
-    {
-        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
-        {
-            vertices.push_back(position.x - plan[y*nbVerticesPerSide+x].x);
-            vertices.push_back(position.y + plan[y*nbVerticesPerSide+x].y);
-            vertices.push_back(position.z);
-        }
-    }
-
-    // Left
-    position = glm::vec3(-size/2, center.y - (size/2), center.z - (size/2));
-    
-    for (int y = 0; y < nbVerticesPerSide; ++y)
-    {
-        for (int x = 0; x < nbVerticesPerSide - 1; ++x)
-        {
-            vertices.push_back(position.x);
-            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.y);
-            vertices.push_back(plan[y*nbVerticesPerSide+x].x + position.z);
-        }
-    }
-
-    // Up
-    position = glm::vec3(center.x + (size/2), size/2, center.z - (size/2));
-    
-    for (int y = 1; y < nbVerticesPerSide - 1; ++y)
-    {
-        for (int x = 1; x < nbVerticesPerSide - 1; ++x)
-        {
-            vertices.push_back(position.x - plan[y*nbVerticesPerSide+x].x);
-            vertices.push_back(position.y);
-            vertices.push_back(plan[y*nbVerticesPerSide+x].y + position.z);
-        }
-    }
-
-    // Down
-    position = glm::vec3(center.x - (size/2), -size/2, center.z + (size/2));
-    
-    for (int y = 1; y < nbVerticesPerSide - 1; ++y)
-    {
-        for (int x = 1; x < nbVerticesPerSide - 1; ++x)
-        {
-            vertices.push_back(plan[y*nbVerticesPerSide+x].x + position.x);
-            vertices.push_back(position.y);
-            vertices.push_back(position.z - plan[y*nbVerticesPerSide+x].y);
-        }
-    }
-
-    // std::cout << "vertices : " << vertices.size() << " & " << "nbVertices : " << nbVertices << std::endl;
-    assert(vertices.size()/3 == nbVertices && "fill vertices problem index != nbVectices");
-
-    return vertices;
 }
