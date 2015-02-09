@@ -186,11 +186,6 @@ int main( int argc, char **argv )
     Camera camera;
     camera_defaults(camera);
 
-    //Light
-    // float positionLightSlider[9] = {3, 0, 0, -3, 0, 0, -20, 20, 0};
-    // float rgbSlider[9] = {0.7, 0.2, 0.2, 0.3, 0.2, 0.9, 0.6, 0.1, 0.6};
-    // float intensitySlider[3] = {0.5, 1.0, 0.8};
-
     // GUI
     GUIStates guiStates;
     init_gui_states(guiStates);
@@ -301,9 +296,9 @@ int main( int argc, char **argv )
     glGenBuffers(3, ssbo);
 
     // Nb Lights
-    int pointLightCount = 2;
-    int directionalLightCount = 1;
-    int spotLightCount = 1;
+    float pointLightCount = 1;
+    float directionalLightCount = 1;
+    float spotLightCount = 1;
 
     ///////////////////////////////////////////////////
     //  TEXTURES
@@ -355,6 +350,7 @@ int main( int argc, char **argv )
     do
     {
         t = glfwGetTime();
+        float magik = (((int)(t*100) % 4000) - 2000)/(float)100;
 
         // Upload value
         glProgramUniform1f(programObject, timeLocation, t);
@@ -433,7 +429,7 @@ int main( int argc, char **argv )
         {
             PointLight p =
             {
-                glm::vec3(10 * i + fabsf(cos(M_PI * i * t)), 1, 10 * i + fabsf(sin(M_PI * i * t))), 0,
+                glm::vec3(cos(t * M_PI) * magik, 3, sin(t * M_PI) * magik), 0,
                 glm::vec3(fabsf(cos(i*2.f)), 1.-fabsf(sinf(i)) , 0.5f + 0.5f-fabsf(cosf(i)) ),
                 1.0
             };
@@ -449,9 +445,9 @@ int main( int argc, char **argv )
         {
             DirectionalLight p =
             {
-                glm::vec3(-3, 1, 0), 0,
+                glm::vec3(0, 3, i), 0,
                 glm::vec3(0.3, 0.3, 0.9),  
-                1.
+                .1
             };
             ((DirectionalLight*) ((int*) lightBuffer + 4))[i] = p;
         }
@@ -465,11 +461,11 @@ int main( int argc, char **argv )
         {
             SpotLight p =
             {
-                glm::vec3(-5, 1, 0),
+                glm::vec3(cos(t * M_PI + i) * magik, 3, sin(t * M_PI + i) * magik),
                 30,
                 glm::vec3(0, -1, 0),
                 .5,
-                glm::vec3(0.2, 0.9, 0.2),  
+                 glm::vec3(fabsf(cos(t+i*2.f)), 1.-fabsf(sinf(t+i)) , 0.5f + 0.5f-fabsf(cosf(t+i))),
                 1.
             };
             ((SpotLight*) ((int*) lightBuffer + 4))[i] = p;
@@ -541,18 +537,9 @@ int main( int argc, char **argv )
         imguiBeginScrollArea("aogl", width - 210, height - 310, 200, 300, &logScroll);
         sprintf(lineBuffer, "FPS %f", fps);
         imguiLabel(lineBuffer);
-        // char title1[64] = {"PointLight_1"};
-        // imguiLabel(title1);
-        // imguiSlider("Intensity", &intensitySlider[0], 0.0, 1.0, 0.1);
-        // imguiSlider("Red", &rgbSlider[0], 0.0, 1.0, 0.1);
-        // imguiSlider("Green", &rgbSlider[1], 0.0, 1.0, 0.1);
-        // imguiSlider("Blue", &rgbSlider[2], 0.0, 1.0, 0.1);
-        // char title2[64] = {"PointLight_2"};
-        // imguiLabel(title2);
-        // imguiSlider("Intensity", &intensitySlider[1], 0.0, 1.0, 0.1);
-        // imguiSlider("Red", &rgbSlider[3], 0.0, 1.0, 0.1);
-        // imguiSlider("Green", &rgbSlider[4], 0.0, 1.0, 0.1);
-        // imguiSlider("Blue", &rgbSlider[5], 0.0, 1.0, 0.1);
+        imguiSlider("Nb PointLights", &pointLightCount, 0, 100, 1);
+        imguiSlider("Nb SpotLight", &spotLightCount, 0, 100, 1);
+        imguiSlider("Nb DirectionalLight", &directionalLightCount, 0, 100, 1);
 
         imguiEndScrollArea();
         imguiEndFrame();

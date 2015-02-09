@@ -61,80 +61,89 @@ in block
 	vec3 Position;
 } In;
 
-vec3 pointLightIllumination(vec3 position, vec3 color, float intensity, vec3 diffuseColor)
+vec3 pointLightIllumination(vec3 diffuseColor, vec3 specularColor)
 {
-    // point light
-    vec3 l = normalize(position - In.Position);
-    float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
+    vec3 totalColor;
+    for(int i = 0; i < PointLights.count; ++i)
+    {
+        // point light
+        vec3 l = normalize(PointLights.Lights[i].position - In.Position);
+        float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
 
-    // specular
-    vec3 spec = texture(Specular, In.TexCoord).rgb;
-    vec3 v = normalize(CameraPosition - In.Position);
-    vec3 h = normalize(l+v);
-    float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
-    vec3 specularColor =  spec * pow(ndoth, SpecularPower);
+        // specular
+        vec3 v = normalize(CameraPosition - In.Position);
+        vec3 h = normalize(l+v);
+        float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
+        vec3 specular =  specularColor * pow(ndoth, SpecularPower);
 
-    // attenuation
-    float distance = length(position - In.Position);
-    float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
+        // attenuation
+        float distance = length(PointLights.Lights[i].position - In.Position);
+        float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
 
-    //TODO faire une specular intensity
-    return ((diffuseColor * ndotl * color * intensity) + (specularColor * intensity)) * attenuation;
+        totalColor += ((diffuseColor * ndotl * PointLights.Lights[i].color * PointLights.Lights[i].intensity) + (specular * PointLights.Lights[i].intensity)) * attenuation;
+    }
+    return totalColor;
 }
 
-vec3 directionalLightIllumination(vec3 direction, vec3 color, float intensity, vec3 diffuseColor)
+vec3 directionalLightIllumination(vec3 diffuseColor, vec3 specularColor)
 {
-    // directional
-    vec3 l = normalize(direction);
-    float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
+    vec3 totalColor;
+    for(int i = 0; i < DirectionalLights.count; ++i)
+    {
+        // directional
+        vec3 l = normalize(DirectionalLights.Lights[i].position);
+        float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
 
-    // SpecularPower
-    vec3 spec = texture(Specular, In.TexCoord).rgb;
-    vec3 v = normalize(CameraPosition - In.Position);
-    vec3 h = normalize(l+v);
-    float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
-    vec3 specularColor =  spec * pow(ndoth, SpecularPower);
+        // SpecularPower
+        vec3 v = normalize(CameraPosition - In.Position);
+        vec3 h = normalize(l+v);
+        float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
+        vec3 specular = specularColor * pow(ndoth, SpecularPower);
 
-    return (diffuseColor * ndotl * color * intensity) + specularColor * intensity;
+        totalColor += (diffuseColor * ndotl * DirectionalLights.Lights[i].color * DirectionalLights.Lights[i].intensity) + specular * DirectionalLights.Lights[i].intensity;
+    }
+    return totalColor;
 }
 
-vec3 spotLightIllumination(vec3 position, vec3 direction, vec3 color, float angle, float intensity, vec3 diffuseColor)
+vec3 spotLightIllumination(vec3 diffuseColor, vec3 specularColor)
 {
-    // point light
-    vec3 l = normalize(position - In.Position);
-    float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
+    vec3 totalColor;
+    for(int i = 0; i < SpotLights.count; ++i)
+    {
+        // point light
+        vec3 l = normalize(SpotLights.Lights[i].position - In.Position);
+        float ndotl = clamp(dot(In.Normal, l), 0.0, 1.0);
 
-    // specular
-    vec3 spec = texture(Specular, In.TexCoord).rgb;
-    vec3 v = normalize(CameraPosition - In.Position);
-    vec3 h = normalize(l+v);
-    float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
-    vec3 specularColor =  spec * pow(ndoth, SpecularPower);
+        // specular
+        vec3 v = normalize(CameraPosition - In.Position);
+        vec3 h = normalize(l+v);
+        float ndoth = clamp(dot(In.Normal, h), 0.0, 1.0);
+        vec3 specular =  specularColor * pow(ndoth, SpecularPower);
 
-    // attenuation
-    float distance = length(position - In.Position);
-    float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
+        // attenuation
+        float distance = length(SpotLights.Lights[i].position - In.Position);
+        float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
 
-    angle = radians(angle);
-    float theta = acos(dot(-l, normalize(direction)));
+        float angle = radians(SpotLights.Lights[i].angle);
+        float theta = acos(dot(-l, normalize(SpotLights.Lights[i].direction)));
 
-    float falloff = clamp(pow(((cos(theta) - cos(angle)) / (cos(angle) - (cos(0.3+angle)))), 4), 0, 1);
+        float falloff = clamp(pow(((cos(theta) - cos(angle)) / (cos(angle) - (cos(0.3+angle)))), 4), 0, 1);
 
-
-    return ((diffuseColor * ndotl * color * intensity) + (specularColor * intensity)) * attenuation * falloff;
+        totalColor += ((diffuseColor * ndotl * SpotLights.Lights[i].color * SpotLights.Lights[i].intensity) + (specularColor * SpotLights.Lights[i].intensity)) * attenuation * falloff;
+    }
+    return totalColor;
 }
 
 void main()
 {
 	vec3 diffuse = texture(Diffuse, In.TexCoord).rgb;
-	vec3 speculaire = texture(Specular, In.TexCoord).rgb;
+	vec3 specular = texture(Specular, In.TexCoord).rgb;
 
-    vec3 PointLight_1 = pointLightIllumination(PointLights.Lights[0].position, PointLights.Lights[0].color, PointLights.Lights[0].intensity, diffuse);
-    vec3 PointLight_2 = pointLightIllumination(PointLights.Lights[1].position, PointLights.Lights[1].color, PointLights.Lights[1].intensity, diffuse);
-	vec3 DirectionalLight_1 = directionalLightIllumination(DirectionalLights.Lights[0].position, DirectionalLights.Lights[0].color, DirectionalLights.Lights[0].intensity, diffuse);
-	vec3 SpotLight_1 = spotLightIllumination(SpotLights.Lights[0].position, SpotLights.Lights[0].direction, SpotLights.Lights[0].color, SpotLights.Lights[0].angle, SpotLights.Lights[0].intensity, diffuse);
+    vec3 PointLights = pointLightIllumination(diffuse, specular);
+    vec3 DirectionalLights = directionalLightIllumination(diffuse, specular);
+	vec3 SpotLights = spotLightIllumination(diffuse, specular);
 
-	vec3 finalColor = PointLight_1 + PointLight_2 + DirectionalLight_1 + SpotLight_1;
+	vec3 finalColor = PointLights + DirectionalLights + SpotLights;
 
 	FragColor = vec4(finalColor, 1);
 }
