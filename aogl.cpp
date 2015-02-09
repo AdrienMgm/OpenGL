@@ -190,6 +190,9 @@ int main( int argc, char **argv )
     GUIStates guiStates;
     init_gui_states(guiStates);
 
+    // Viewport 
+    glViewport( 0, 0, width, height);
+
     /////////////////////////////////////////////
     //  SHADERS
     /////////////////////////////////////////////
@@ -198,12 +201,46 @@ int main( int argc, char **argv )
     GLuint vertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "aogl.vert");
     GLuint geomShaderId = compile_shader_from_file(GL_GEOMETRY_SHADER, "aogl.geom");
     GLuint fragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "aogl.frag");
+    GLuint blitVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "blit.vert");
+    GLuint blitFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "blit.frag");
+    GLuint pointLightVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "pointLight.vert");
+    GLuint pointLightFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "pointLight.frag");
+    GLuint spotLightVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "spotLight.vert");
+    GLuint spotLightFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "spotLight.frag");
+    GLuint directionalLightVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "directionalLight.vert");
+    GLuint directionalLightFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "directionalLight.frag");
+    
     GLuint programObject = glCreateProgram();
     glAttachShader(programObject, vertShaderId);
     glAttachShader(programObject, geomShaderId);
     glAttachShader(programObject, fragShaderId);
     glLinkProgram(programObject);
-    if (check_link_error(programObject) < 0)
+
+    GLuint programBlit = glCreateProgram();
+    glAttachShader(programBlit, blitVertShaderId);
+    glAttachShader(programBlit, blitFragShaderId);
+    glLinkProgram(programBlit);
+
+    GLuint programPointLight = glCreateProgram();
+    glAttachShader(programPointLight, pointLightVertShaderId);
+    glAttachShader(programPointLight, pointLightFragShaderId);
+    glLinkProgram(programPointLight);
+
+    GLuint programDirectionalLight = glCreateProgram();
+    glAttachShader(programDirectionalLight, directionalLightVertShaderId);
+    glAttachShader(programDirectionalLight, directionalLightFragShaderId);
+    glLinkProgram(programDirectionalLight);
+
+    GLuint programSpotLight = glCreateProgram();
+    glAttachShader(programSpotLight, spotLightVertShaderId);
+    glAttachShader(programSpotLight, spotLightFragShaderId);
+    glLinkProgram(programSpotLight);
+
+    if (check_link_error(programObject) < 0 &&
+        check_link_error(programBlit) < 0 &&
+        check_link_error(programPointLight) < 0 &&
+        check_link_error(programDirectionalLight) < 0 &&
+        check_link_error(programSpotLight) < 0)
         exit(1);
     
     // Upload uniforms
@@ -212,21 +249,21 @@ int main( int argc, char **argv )
     if (!checkError("Uniforms"))
         exit(1);
 
-    // Viewport 
-    glViewport( 0, 0, width, height  );
-
     //////////////////////////////////////////////////////
     // Objects & VAO / VBO
     //////////////////////////////////////////////////////
 
     // Create a Vertex Array Object
-    GLuint vao[2];
-    glGenVertexArrays(2, vao);
+    GLuint vao[3];
+    glGenVertexArrays(3, vao);
 
     // Create a VBO for each array
-    GLuint vbo[8];
-    glGenBuffers(8, vbo);
+    GLuint vbo[10];
+    glGenBuffers(10, vbo);
 
+    //////////
+    // CUBE //
+    //////////
     // Object
     int cube_triangleCount = 12;
     int cube_triangleList[] = {0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7, 8, 9, 10, 10, 9, 11, 12, 13, 14, 14, 13, 15, 16, 17, 18, 19, 17, 20, 21, 22, 23, 24, 25, 26, };
@@ -259,6 +296,9 @@ int main( int argc, char **argv )
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
     glBufferData(GL_ARRAY_BUFFER, sizeof(cube_uvs), cube_uvs, GL_STATIC_DRAW);
 
+    //////////
+    // PLAN //
+    //////////
     // Object
     int plane_triangleCount = 2;
     int plane_triangleList[] = {0, 1, 2, 2, 1, 3}; 
@@ -291,6 +331,24 @@ int main( int argc, char **argv )
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
     glBufferData(GL_ARRAY_BUFFER, sizeof(plane_uvs), plane_uvs, GL_STATIC_DRAW);
 
+    //////////
+    // Quad //
+    //////////
+    int quad_triangleCount = 2;
+    int quad_triangleList[] = {0, 1, 2, 2, 1, 3};
+    float quad_vertices[] = {-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0};
+    
+    // Bind the VAO
+    glBindVertexArray(vao[2]);
+    // Bind indices and upload data
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo[8]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_triangleList), quad_triangleList, GL_STATIC_DRAW);
+    // Bind vertices and upload data
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[9]);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+
     // Generate Shader Storage Objects
     GLuint ssbo[3];
     glGenBuffers(3, ssbo);
@@ -307,8 +365,8 @@ int main( int argc, char **argv )
     int y;
     int comp;
 
-    GLuint textures[2];
-    glGenTextures(2, textures);
+    GLuint textures[5];
+    glGenTextures(5, textures);
 
     // Texture 1
     unsigned char * diffuse = stbi_load("textures/spnza_bricks_a_diff.tga", &x, &y, &comp, 3);
@@ -330,6 +388,56 @@ int main( int argc, char **argv )
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    // Texture color
+    glBindTexture(GL_TEXTURE_2D, textures[2]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Texture normal
+    glBindTexture(GL_TEXTURE_2D, textures[3]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Texture depth
+    glBindTexture(GL_TEXTURE_2D, textures[4]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    ////////////////////
+    //  Framebuffers  //
+    ////////////////////
+    GLuint gbufferFbo;
+    GLuint gbufferDrawBuffers[2];
+    
+    // Create Framebuffer Object
+    glGenFramebuffers(1, &gbufferFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, gbufferFbo);
+    // Initialize DrawBuffers
+    gbufferDrawBuffers[0] = GL_COLOR_ATTACHMENT0;
+    gbufferDrawBuffers[1] = GL_COLOR_ATTACHMENT1;
+    glDrawBuffers(2, gbufferDrawBuffers);
+
+    // Attach textures to framebuffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 , GL_TEXTURE_2D, textures[2], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1 , GL_TEXTURE_2D, textures[3], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[4], 0);
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        fprintf(stderr, "Error on building framebuffer\n");
+        exit( EXIT_FAILURE );
+    }
+    // Back to the default framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     ////////////////////////////////////////
     // Initialize UNIFORM location
     ////////////////////////////////////////
@@ -337,12 +445,49 @@ int main( int argc, char **argv )
     GLuint objectLocation = glGetUniformLocation(programObject, "Object");
     GLuint diffuseLocation = glGetUniformLocation(programObject, "Diffuse");
     GLuint specularLocation = glGetUniformLocation(programObject, "Specular");
-    GLuint cameraPositionLocation = glGetUniformLocation(programObject, "CameraPosition");
     GLuint specularPowerLocation = glGetUniformLocation(programObject, "SpecularPower");
+
+    // Blit
+    GLuint isDepthLocation = glGetUniformLocation(programBlit, "isDepth");
+    GLuint textureLocation = glGetUniformLocation(programBlit, "Texture");
+    // PointLight
+    GLuint pl_colorBufferLocation = glGetUniformLocation(programPointLight, "ColorBuffer");
+    GLuint pl_normalBufferLocation = glGetUniformLocation(programPointLight, "NormalBuffer");
+    GLuint pl_depthBufferLocation = glGetUniformLocation(programPointLight, "DepthBuffer");
+    GLuint pl_cameraPositionLocation = glGetUniformLocation(programPointLight, "CameraPosition");
+    GLuint pl_screenToWorldLocation = glGetUniformLocation(programPointLight, "ScreenToWorld");
+    // DirectionalLight
+    GLuint dl_colorBufferLocation = glGetUniformLocation(programDirectionalLight, "ColorBuffer");
+    GLuint dl_normalBufferLocation = glGetUniformLocation(programDirectionalLight, "NormalBuffer");
+    GLuint dl_depthBufferLocation = glGetUniformLocation(programDirectionalLight, "DepthBuffer");
+    GLuint dl_cameraPositionLocation = glGetUniformLocation(programDirectionalLight, "CameraPosition");
+    GLuint dl_screenToWorldLocation = glGetUniformLocation(programDirectionalLight, "ScreenToWorld");
+    // SpotLight
+    GLuint sl_colorBufferLocation = glGetUniformLocation(programSpotLight, "ColorBuffer");
+    GLuint sl_normalBufferLocation = glGetUniformLocation(programSpotLight, "NormalBuffer");
+    GLuint sl_depthBufferLocation = glGetUniformLocation(programSpotLight, "DepthBuffer");
+    GLuint sl_cameraPositionLocation = glGetUniformLocation(programSpotLight, "CameraPosition");
+    GLuint sl_screenToWorldLocation = glGetUniformLocation(programSpotLight, "ScreenToWorld");
 
     glProgramUniform1i(programObject, diffuseLocation, 0);
     glProgramUniform1i(programObject, specularLocation, 1);
     glProgramUniform1f(programObject, specularPowerLocation, 20);
+
+    // Blit
+    glProgramUniform1i(programBlit, isDepthLocation, 0);
+    glProgramUniform1i(programBlit, textureLocation, 0);
+    // PointLight
+    glProgramUniform1i(programPointLight, pl_colorBufferLocation, 0);
+    glProgramUniform1i(programPointLight, pl_normalBufferLocation, 1);
+    glProgramUniform1i(programPointLight, pl_depthBufferLocation, 2);
+    // DirectionalLight
+    glProgramUniform1i(programDirectionalLight, dl_colorBufferLocation, 0);
+    glProgramUniform1i(programDirectionalLight, dl_normalBufferLocation, 1);
+    glProgramUniform1i(programDirectionalLight, dl_depthBufferLocation, 2);
+    // SpotLight
+    glProgramUniform1i(programSpotLight, sl_colorBufferLocation, 0);
+    glProgramUniform1i(programSpotLight, sl_normalBufferLocation, 1);
+    glProgramUniform1i(programSpotLight, sl_depthBufferLocation, 2);
 
     ///////////////////////////////
     //  The LOOOOOP
@@ -414,7 +559,9 @@ int main( int argc, char **argv )
             guiStates.lockPositionY = mousey;
         }
 
-        //Lights buffer storage
+        ///////////////////////////////
+        //  Buffer Storage : Lights  //
+        ///////////////////////////////
         int pointLightBufferSize = 4 * sizeof(int) + sizeof(PointLight) * pointLightCount;
         int directionalLightBufferSize = 4 * sizeof(int) + sizeof(DirectionalLight) * directionalLightCount;
         int spotLightBufferSize = 4 * sizeof(int) + sizeof(SpotLight) * spotLightCount;
@@ -429,7 +576,7 @@ int main( int argc, char **argv )
         {
             PointLight p =
             {
-                glm::vec3(cos(t * M_PI) * magik, 3, sin(t * M_PI) * magik), 0,
+                glm::vec3(1, 2, 0), 0,
                 glm::vec3(fabsf(cos(i*2.f)), 1.-fabsf(sinf(i)) , 0.5f + 0.5f-fabsf(cosf(i)) ),
                 1.0
             };
@@ -445,9 +592,9 @@ int main( int argc, char **argv )
         {
             DirectionalLight p =
             {
-                glm::vec3(0, 3, i), 0,
-                glm::vec3(0.3, 0.3, 0.9),  
-                .1
+                glm::vec3(3, 3, 0), 0,
+                glm::vec3(0.9, 0.9, 0.9),  
+                .5
             };
             ((DirectionalLight*) ((int*) lightBuffer + 4))[i] = p;
         }
@@ -461,7 +608,7 @@ int main( int argc, char **argv )
         {
             SpotLight p =
             {
-                glm::vec3(cos(t * M_PI + i) * magik, 3, sin(t * M_PI + i) * magik),
+                glm::vec3(-1, 2, 0),
                 30,
                 glm::vec3(0, -1, 0),
                 .5,
@@ -476,9 +623,13 @@ int main( int argc, char **argv )
         glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, ssbo[1], 0, directionalLightBufferSize);
         glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 2, ssbo[2], 0, spotLightBufferSize);
 
-        // Default states
+        /////////////////////
+        //  States OpenGL  //
+        /////////////////////
         glEnable(GL_DEPTH_TEST);
 
+        // default frame buffer (screen)
+        glBindFramebuffer(GL_FRAMEBUFFER, gbufferFbo);
         // Clear the front buffer
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -487,10 +638,22 @@ int main( int argc, char **argv )
         glm::mat4 worldToView = glm::lookAt(camera.eye, camera.o, camera.up);
         glm::mat4 objectToWorld;
         glm::mat4 mvp = projection * worldToView * objectToWorld;
+        // Compute the inverse worldToScreen matrix
+        glm::mat4 screenToWorld = glm::transpose(glm::inverse(mvp));
 
         // Send camera position
-        glProgramUniform3f(programObject, cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
+        glProgramUniform3f(programPointLight, pl_cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
+        glProgramUniform3f(programDirectionalLight, dl_cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
+        glProgramUniform3f(programSpotLight, sl_cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
 
+        glProgramUniformMatrix4fv(programPointLight, pl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
+        glProgramUniformMatrix4fv(programDirectionalLight, dl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
+        glProgramUniformMatrix4fv(programSpotLight, sl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
+
+
+        //////////////
+        //  Render  //
+        //////////////
         // Select shader
         glUseProgram(programObject);
 
@@ -512,6 +675,70 @@ int main( int argc, char **argv )
             glProgramUniform1i(programObject, objectLocation, 1);
         glBindVertexArray(vao[1]);
         glDrawElements(GL_TRIANGLES, plane_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+
+        ////////////////////////////
+        //  Render FBO - gBuffer  //
+        ////////////////////////////
+        // Bind gbuffer
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // Clear the gbuffer
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+
+        // Setup additive blending
+        glBlendFunc(GL_ONE, GL_ONE);
+
+        // Main Viewport
+        glViewport(0, 0, width, height);
+
+        glBindVertexArray(vao[2]);
+        
+        glActiveTexture(GL_TEXTURE0 + 0);
+        glBindTexture(GL_TEXTURE_2D, textures[2]);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        glBindTexture(GL_TEXTURE_2D, textures[3]);
+        glActiveTexture(GL_TEXTURE0 + 2);
+        glBindTexture(GL_TEXTURE_2D, textures[4]);
+
+        // PointLight render
+        glUseProgram(programPointLight);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+
+        // DirectionalLight render
+        glUseProgram(programDirectionalLight);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+
+        // SpotLight render
+        glUseProgram(programSpotLight);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+
+        //////////////////
+        // Blit screens //
+        //////////////////
+        glActiveTexture(GL_TEXTURE0);
+        glDisable(GL_BLEND);
+
+        // Use the blit program
+        glUseProgram(programBlit);
+        glBindVertexArray(vao[2]);
+        glProgramUniform1i(programBlit, isDepthLocation, 0);
+
+        // Viewport1
+        glViewport( 0, 0, width/3, height/4 );
+        glBindTexture(GL_TEXTURE_2D, textures[2]);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+        // Viewport2
+        glViewport( width/3, 0, width/3, height/4 );
+        glBindTexture(GL_TEXTURE_2D, textures[3]);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+        // Viewport3
+        glViewport( 2*width/3, 0, width/3, height/4 );
+        glBindTexture(GL_TEXTURE_2D, textures[4]);
+        glProgramUniform1i(programBlit, isDepthLocation, 1);
+        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+
 
 #if 1
         // Draw UI
