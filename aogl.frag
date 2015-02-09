@@ -11,7 +11,7 @@ uniform vec3 CameraPosition;
 uniform float SpecularPower;
 
 // Write in GL_COLOR_ATTACHMENT0
-layout(location = 0 ) out vec4 Color;
+layout(location = 0) out vec4 Color;
 // Write in GL_COLOR_ATTACHMENT1
 layout(location = 1) out vec4 Normal;
 

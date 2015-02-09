@@ -8,8 +8,9 @@
 precision highp float;
 precision highp int;
 
-uniform mat4 MVP;
+uniform mat4 MVPLight;
 uniform float Time;
+uniform int Object;
 
 layout(location = POSITION) in vec3 Position;
 layout(location = NORMAL) in vec3 Normal;
@@ -36,5 +37,5 @@ void main()
 	Out.Normal = normal;
 	Out.Position = pos;
 
-	gl_Position = MVP * vec4(pos, 1.0);
+	gl_Position = MVPLight * vec4(pos, 1.0);
 }
