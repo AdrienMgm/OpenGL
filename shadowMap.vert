@@ -8,7 +8,7 @@
 precision highp float;
 precision highp int;
 
-uniform mat4 MVPLight;
+uniform mat4 ObjectToLightScreen;
 uniform float Time;
 uniform int Object;
 
@@ -37,5 +37,5 @@ void main()
 	Out.Normal = normal;
 	Out.Position = pos;
 
-	gl_Position = MVPLight * vec4(pos, 1.0);
+	gl_Position = ObjectToLightScreen * vec4(pos, 1.0);
 }
