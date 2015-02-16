@@ -81,27 +81,23 @@ vec3 illuminationPointLight(vec3 positionObject, vec3 diffuseColor, vec3 specula
 
     vec3 color = ((diffuseColor * ndotl * PointLights.Lights[Id].color * PointLights.Lights[Id].intensity) + (specular * PointLights.Lights[Id].intensity)) * attenuation;
 
-    // ShadowMapping
-    float bias = .005*tan(acos(ndotl)); // bias
-    float shadowDepth = textureProj(ShadowMap, vec4(lP.xy, lP.z - bias, 1.0), 0);
+    if (any(greaterThan(color, vec3(0.001))))
+    {
+        // Echantillonnage de Poisson
+        float shadowDepth = 0.0;
+        const int SampleCount = 4;
+        const float samplesf = SampleCount;
+        const float Spread = 1750.0;
 
-    // if (any(greaterThan(color, vec3(0.001))))
-    // {
-    //     // Echantillonnage de Poisson
-    //     float shadowDepth = 0.0;
-    //     const int SampleCount = 4;
-    //     const float samplesf = SampleCount;
-    //     const float Spread = 1750.0;
+        for (int i=0;i<SampleCount;i++)
+        {
+            int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
+            shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
+        }
 
-    //     for (int i=0;i<SampleCount;i++)
-    //     {
-    //         int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
-    //         shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
-    //     }
-
-    //     color *= shadowDepth;
-    // }
-    return shadowDepth * color;
+        color = color * shadowDepth;
+    }
+    return color;
 }
 
 void main(void)

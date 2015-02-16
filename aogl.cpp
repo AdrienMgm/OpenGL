@@ -437,8 +437,8 @@ int main( int argc, char **argv )
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
         // Params to shadowMap
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
 
     ////////////////////
@@ -720,12 +720,12 @@ int main( int argc, char **argv )
         ((int*) lightBuffer)[0] = directionalLightCount;
         for (int i = 0; i < directionalLightCount; ++i)
         {
-            glm::vec3 pos(0, .1, 0);
+            glm::vec3 pos(3, 3, 0);
             // Light space matrices
             // From light space to shadow map screen space
             // glm::mat4 projectionLight = glm::perspective(glm::radians(45*2.f), 1.f, 1.f, 100.f);
-            // glm::mat4 projectionLight = glm::ortho(static_cast<float>(-shadowMapSize), static_cast<float>(shadowMapSize), static_cast<float>(shadowMapSize), static_cast<float>(-shadowMapSize), -1.f, 1.f);
-            glm::mat4 projectionLight = glm::ortho(-1.f, 1.f, -1.f, 1.f, 0.f, 1.f);
+            glm::mat4 projectionLight = glm::ortho(static_cast<float>(-shadowMapSize), static_cast<float>(shadowMapSize), static_cast<float>(shadowMapSize), static_cast<float>(-shadowMapSize), 1.f, 100.f);
+            // glm::mat4 projectionLight = glm::ortho(-1.f, 1.f, -1.f, 1.f, 0.f, 100.f);
             // From world to light
             glm::mat4 worldToLight = glm::lookAt(pos, glm::vec3(0), glm::vec3(0.f, 0.f, -1.f));
             // From object to light
@@ -869,7 +869,7 @@ int main( int argc, char **argv )
         glBindTexture(GL_TEXTURE_2D, textures[3]);
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, textures[4]);
-        for(int i = 0; i < (pointLightCount + directionalLightCount + spotLightCount); ++i)
+        for(int i = 0; i < shadowMapCount; ++i)
         {
             glActiveTexture(GL_TEXTURE0 + 3 + i);
             glBindTexture(GL_TEXTURE_2D, shadowMapTextures[i]);
@@ -928,7 +928,7 @@ int main( int argc, char **argv )
         glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         // Viewport4
         glViewport(3*width/4, 0, width/4, height/4);
-        glBindTexture(GL_TEXTURE_2D, shadowMapTextures[(int)t % (int)(pointLightCount + directionalLightCount + spotLightCount)]);
+        glBindTexture(GL_TEXTURE_2D, shadowMapTextures[(int)t % 3]);
         glProgramUniform1i(programBlit, isDepthLocation, 1);
         glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
 
