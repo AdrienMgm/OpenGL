@@ -98,9 +98,9 @@ vec3 illuminationSpotLight(vec3 positionObject, vec3 diffuseColor, vec3 specular
         {
             // Echantillonnage de Poisson
             float shadowDepth = 0.0;
-            const int SampleCount = 16;
+            const int SampleCount = 4;
             const float samplesf = SampleCount;
-            const float Spread = 1250.0;
+            const float Spread = 1750.0;
 
             for (int i=0;i<SampleCount;i++)
             {

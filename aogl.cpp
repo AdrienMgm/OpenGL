@@ -358,8 +358,8 @@ int main( int argc, char **argv )
     glGenBuffers(3, ssbo);
 
     // Nb Lights
-    float pointLightCount = 0;
-    float directionalLightCount = 0;
+    float pointLightCount = 1;
+    float directionalLightCount = 1;
     float spotLightCount = 1;
 
     ///////////////////////////////////////////////////
@@ -369,8 +369,8 @@ int main( int argc, char **argv )
     int y;
     int comp;
 
-    GLuint textures[6];
-    glGenTextures(6, textures);
+    GLuint textures[5];
+    glGenTextures(5, textures);
 
     // Texture 1
     unsigned char * diffuse = stbi_load("textures/spnza_bricks_a_diff.tga", &x, &y, &comp, 3);
@@ -418,19 +418,26 @@ int main( int argc, char **argv )
 
     // Create shadow texture
     int shadowMapSize = 1024;
+    int shadowMapCount = pointLightCount + spotLightCount + directionalLightCount;
 
-    glBindTexture(GL_TEXTURE_2D, textures[5]);
-    // Create empty texture
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
-    // Bilinear filtering
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Color needs to be 0 outside of texture coordinates
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    // Params to shadowMap
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    GLuint shadowMapTextures[shadowMapCount];
+    glGenTextures(shadowMapCount, shadowMapTextures);
+
+    for (int i = 0; i < shadowMapCount; ++i)
+    {
+        glBindTexture(GL_TEXTURE_2D, shadowMapTextures[i]);
+        // Create empty texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+        // Bilinear filtering
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // Color needs to be 0 outside of texture coordinates
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        // Params to shadowMap
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    }
 
     ////////////////////
     //  Framebuffers  //
@@ -471,8 +478,9 @@ int main( int argc, char **argv )
     // Attach the renderbuffer
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, shadowRenderBuffer);
 
-    // Attach the shadow texture to the depth attachment
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[5], 0);
+    // Attach the first shadow texture to the depth attachment
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[0], 0);
+
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
       fprintf(stderr, "Error on building shadow framebuffer\n");
@@ -646,6 +654,8 @@ int main( int argc, char **argv )
 
         void * lightBuffer = NULL;
 
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
+
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[0]);
         glBufferData(GL_SHADER_STORAGE_BUFFER, pointLightBufferSize, 0, GL_DYNAMIC_COPY);
         lightBuffer = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
@@ -675,8 +685,17 @@ int main( int argc, char **argv )
                 worldToLightScreen,
             };
             ((PointLight*) ((int*) lightBuffer + 4))[i] = p;
+
+            // Attach the shadow texture to the depth attachment
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[i], 0);
+            // Clear only the depth buffer
+            glClear(GL_DEPTH_BUFFER_BIT);
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[1]);
         glBufferData(GL_SHADER_STORAGE_BUFFER, directionalLightBufferSize, 0, GL_DYNAMIC_COPY);
@@ -707,8 +726,17 @@ int main( int argc, char **argv )
                 worldToLightScreen,
             };
             ((DirectionalLight*) ((int*) lightBuffer + 4))[i] = p;
+
+            // Attach the shadow texture to the depth attachment
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[static_cast<int>(pointLightCount) + i], 0);
+            // Clear only the depth buffer
+            glClear(GL_DEPTH_BUFFER_BIT);
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[2]);
         glBufferData(GL_SHADER_STORAGE_BUFFER, spotLightBufferSize, 0, GL_DYNAMIC_COPY);
@@ -744,8 +772,15 @@ int main( int argc, char **argv )
                 worldToLightScreen
             };
             ((SpotLight*) ((int*) lightBuffer + 4))[i] = p;
+
+            // Attach the shadow texture to the depth attachment
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[static_cast<int>(pointLightCount + directionalLightCount) + i], 0);
+            // Clear only the depth buffer
+            glClear(GL_DEPTH_BUFFER_BIT);
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, ssbo[0], 0, pointLightBufferSize);
         glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, ssbo[1], 0, directionalLightBufferSize);
@@ -798,7 +833,7 @@ int main( int argc, char **argv )
 
         // Render vaos
         glBindVertexArray(vao[0]);
-        glDrawElementsInstanced(GL_TRIANGLES, cube_triangleCount * 3, GL_UNSIGNED_INT, (void*)0, 1);
+        glDrawElementsInstanced(GL_TRIANGLES, cube_triangleCount * 3, GL_UNSIGNED_INT, (void*)0, 3);
         glBindVertexArray(vao[1]);
         glDrawElements(GL_TRIANGLES, plane_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
 
@@ -827,8 +862,11 @@ int main( int argc, char **argv )
         glBindTexture(GL_TEXTURE_2D, textures[3]);
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, textures[4]);
-        glActiveTexture(GL_TEXTURE0 + 3);
-        glBindTexture(GL_TEXTURE_2D, textures[5]);
+        for(int i = 0; i < shadowMapCount; ++i)
+        {
+            glActiveTexture(GL_TEXTURE0 + 3 + i);
+            glBindTexture(GL_TEXTURE_2D, shadowMapTextures[i]);
+        }
 
         // PointLight render
         glUseProgram(programPointLight);
@@ -854,21 +892,17 @@ int main( int argc, char **argv )
         glProgramUniform1i(programBlit, isDepthLocation, 0);
 
         // Viewport1
-        glViewport(0, 0, width/4, height/4);
+        glViewport(0, 0, width/3, height/4);
         glBindTexture(GL_TEXTURE_2D, textures[2]);
         glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         // Viewport2
-        glViewport(width/4, 0, width/4, height/4);
+        glViewport(width/3, 0, width/3, height/4);
         glBindTexture(GL_TEXTURE_2D, textures[3]);
         glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         // Viewport3
-        glViewport(2*width/4, 0, width/4, height/4);
+        glViewport(2*width/3, 0, width/3, height/4);
         glBindTexture(GL_TEXTURE_2D, textures[4]);
         glProgramUniform1i(programBlit, isDepthLocation, 1);
-        glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
-        // Viewport4
-        glViewport(3*width/4, 0, width/4, height/4);
-        glBindTexture(GL_TEXTURE_2D, textures[5]);
         glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
 
 #if 1
@@ -895,9 +929,9 @@ int main( int argc, char **argv )
         imguiBeginScrollArea("aogl", width - 210, height - 310, 200, 300, &logScroll);
         sprintf(lineBuffer, "FPS %f", fps);
         imguiLabel(lineBuffer);
-        imguiSlider("Nb PointLights", &pointLightCount, 0, 100, 1);
-        imguiSlider("Nb SpotLight", &spotLightCount, 0, 100, 1);
-        imguiSlider("Nb DirectionalLight", &directionalLightCount, 0, 100, 1);
+        imguiSlider("Nb PointLights", &pointLightCount, 0, 5, 1);
+        imguiSlider("Nb SpotLight", &spotLightCount, 0, 5, 1);
+        imguiSlider("Nb DirectionalLight", &directionalLightCount, 0, 5, 1);
 
         imguiEndScrollArea();
         imguiEndFrame();
