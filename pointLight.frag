@@ -14,6 +14,8 @@ uniform mat4 ScreenToWorld;
 
 uniform sampler2DShadow ShadowMap;
 
+uniform int Id;
+
 uniform vec3 CameraPosition;
 
 struct PointLight
@@ -59,47 +61,47 @@ float random(vec4 seed)
 
 vec3 illuminationPointLight(vec3 positionObject, vec3 diffuseColor, vec3 specularColor, float specularPower, vec3 normal)
 {
-    vec3 totalColor;
-    for(int i = 0; i < PointLights.count; ++i)
-    {
-        // Light view
-        vec4 wlP = PointLights.Lights[i].worldToLightScreen * vec4(positionObject, 1.0);
-        vec3 lP = vec3(wlP/wlP.w) * 0.5 + 0.5;
+    // Light view
+    vec4 wlP = PointLights.Lights[Id].worldToLightScreen * vec4(positionObject, 1.0);
+    vec3 lP = vec3(wlP/wlP.w) * 0.5 + 0.5;
 
-        // point light
-        vec3 l = normalize(PointLights.Lights[i].position - positionObject);
-        float ndotl = clamp(dot(normal, l), 0.0, 1.0);
+    // point light
+    vec3 l = normalize(PointLights.Lights[Id].position - positionObject);
+    float ndotl = clamp(dot(normal, l), 0.0, 1.0);
 
-        // specular
-        vec3 v = normalize(CameraPosition - positionObject);
-        vec3 h = normalize(l+v);
-        float ndoth = clamp(dot(normal, h), 0.0, 1.0);
-        vec3 specular =  specularColor * pow(ndoth, specularPower);
+    // specular
+    vec3 v = normalize(CameraPosition - positionObject);
+    vec3 h = normalize(l+v);
+    float ndoth = clamp(dot(normal, h), 0.0, 1.0);
+    vec3 specular = specularColor * pow(ndoth, specularPower);
 
-        // attenuation
-        float distance = length(PointLights.Lights[i].position - positionObject);
-        float attenuation = 1.0 / (pow(distance,2)*.1 + 1.0);
+    // attenuation
+    float distance = length(PointLights.Lights[Id].position - positionObject);
+    float attenuation = 1.0 / (pow(distance,2)*.1 + 1.0);
 
-        totalColor += ((diffuseColor * ndotl * PointLights.Lights[i].color * PointLights.Lights[i].intensity) + (specular * PointLights.Lights[i].intensity)) * attenuation;
-    
-        if (any(greaterThan(totalColor, vec3(0.001))))
-        {
-            // Echantillonnage de Poisson
-            float shadowDepth = 0.0;
-            const int SampleCount = 4;
-            const float samplesf = SampleCount;
-            const float Spread = 1750.0;
+    vec3 color = ((diffuseColor * ndotl * PointLights.Lights[Id].color * PointLights.Lights[Id].intensity) + (specular * PointLights.Lights[Id].intensity)) * attenuation;
 
-            for (int i=0;i<SampleCount;i++)
-            {
-                int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
-                shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
-            }
+    // ShadowMapping
+    float bias = .005*tan(acos(ndotl)); // bias
+    float shadowDepth = textureProj(ShadowMap, vec4(lP.xy, lP.z - bias, 1.0), 0);
 
-            totalColor *= shadowDepth;
-        }
-    }
-    return totalColor;
+    // if (any(greaterThan(color, vec3(0.001))))
+    // {
+    //     // Echantillonnage de Poisson
+    //     float shadowDepth = 0.0;
+    //     const int SampleCount = 4;
+    //     const float samplesf = SampleCount;
+    //     const float Spread = 1750.0;
+
+    //     for (int i=0;i<SampleCount;i++)
+    //     {
+    //         int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
+    //         shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
+    //     }
+
+    //     color *= shadowDepth;
+    // }
+    return shadowDepth * color;
 }
 
 void main(void)
@@ -122,7 +124,7 @@ void main(void)
     // Divide by w
     vec3 p = vec3(wP.xyz / wP.w);
 
-    vec3 pointLights = illuminationPointLight(p, diffuseColor, specularColor, specularPower, n);
+    vec3 pointLight = illuminationPointLight(p, diffuseColor, specularColor, specularPower, n);
 
-    Color = vec4(pointLights, 1.0);
+    Color = vec4(pointLight, 1.0);
 }

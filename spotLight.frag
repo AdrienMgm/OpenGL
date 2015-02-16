@@ -14,6 +14,8 @@ uniform mat4 ScreenToWorld;
 
 uniform sampler2DShadow ShadowMap;
 
+uniform int Id;
+
 uniform vec3 CameraPosition;
 
 struct SpotLight
@@ -62,56 +64,52 @@ float random(vec4 seed)
 
 vec3 illuminationSpotLight(vec3 positionObject, vec3 diffuseColor, vec3 specularColor, float specularPower, vec3 normal)
 {
-    vec3 totalColor;
-    for(int i = 0; i < SpotLights.count; ++i)
+    // Light view
+    vec4 wlP = SpotLights.Lights[Id].worldToLightScreen * vec4(positionObject, 1.0);
+    vec3 lP = vec3(wlP/wlP.w) * 0.5 + 0.5;
+
+    // point light
+    vec3 l = normalize(SpotLights.Lights[Id].position - positionObject);
+    float ndotl = clamp(dot(normal, l), 0.0, 1.0);
+
+    // specular
+    vec3 v = normalize(CameraPosition - positionObject);
+    vec3 h = normalize(l+v);
+    float ndoth = clamp(dot(normal, h), 0.0, 1.0);
+    vec3 specular = specularColor * pow(ndoth, specularPower);
+
+    // attenuation
+    float distance = length(SpotLights.Lights[Id].position - positionObject);
+    float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
+
+    float angle = radians(SpotLights.Lights[Id].angle);
+    float theta = acos(dot(-l, normalize(SpotLights.Lights[Id].direction)));
+    float falloff = clamp(pow(((cos(theta) - cos(angle)) / (cos(angle) - (cos(0.3+angle)))), 4), 0, 1);
+
+    // ShadowMapping
+    // float bias = .005*tan(acos(ndotl)); // bias
+    // float shadowDepth = textureProj(ShadowMap, vec4(lP.xy, lP.z - bias, 1.0), 0);
+
+    // if(abs(shadowDepth - (lP.z - bias)) < 0.001) // La distance est pareil que la shadowMap sinon c'est qu'il y a un "bloqueur"
+        vec3 color = ((diffuseColor * ndotl * SpotLights.Lights[Id].color * SpotLights.Lights[Id].intensity) + (specular * SpotLights.Lights[Id].intensity)) * attenuation * falloff;
+
+    if (any(greaterThan(color, vec3(0.001))))
     {
-        // Light view
-        vec4 wlP = SpotLights.Lights[i].worldToLightScreen * vec4(positionObject, 1.0);
-        vec3 lP = vec3(wlP/wlP.w) * 0.5 + 0.5;
+        // Echantillonnage de Poisson
+        float shadowDepth = 0.0;
+        const int SampleCount = 4;
+        const float samplesf = SampleCount;
+        const float Spread = 1750.0;
 
-        // point light
-        vec3 l = normalize(SpotLights.Lights[i].position - positionObject);
-        float ndotl = clamp(dot(normal, l), 0.0, 1.0);
-
-        // specular
-        vec3 v = normalize(CameraPosition - positionObject);
-        vec3 h = normalize(l+v);
-        float ndoth = clamp(dot(normal, h), 0.0, 1.0);
-        vec3 specular = specularColor * pow(ndoth, specularPower);
-
-        // attenuation
-        float distance = length(SpotLights.Lights[i].position - positionObject);
-        float attenuation = 1.0/ (pow(distance,2)*.1 + 1.0);
-
-        float angle = radians(SpotLights.Lights[i].angle);
-        float theta = acos(dot(-l, normalize(SpotLights.Lights[i].direction)));
-        float falloff = clamp(pow(((cos(theta) - cos(angle)) / (cos(angle) - (cos(0.3+angle)))), 4), 0, 1);
-
-        // ShadowMapping
-        // float bias = .005*tan(acos(ndotl)); // bias
-        // float shadowDepth = textureProj(ShadowMap, vec4(lP.xy, lP.z - bias, 1.0), 0);
-
-        // if(abs(shadowDepth - (lP.z - bias)) < 0.001) // La distance est pareil que la shadowMap sinon c'est qu'il y a un "bloqueur"
-            totalColor += ((diffuseColor * ndotl * SpotLights.Lights[i].color * SpotLights.Lights[i].intensity) + (specular * SpotLights.Lights[i].intensity)) * attenuation * falloff;
-    
-        if (any(greaterThan(totalColor, vec3(0.001))))
+        for (int i=0;i<SampleCount;i++)
         {
-            // Echantillonnage de Poisson
-            float shadowDepth = 0.0;
-            const int SampleCount = 4;
-            const float samplesf = SampleCount;
-            const float Spread = 1750.0;
-
-            for (int i=0;i<SampleCount;i++)
-            {
-                int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
-                shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
-            }
-
-            totalColor *= shadowDepth;
+            int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
+            shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
         }
+
+        color *= shadowDepth;
     }
-    return totalColor;
+    return color;
 }
 
 void main(void)
@@ -134,7 +132,7 @@ void main(void)
     // Divide by w
     vec3 p = vec3(wP.xyz / wP.w);
 
-    vec3 spotLights = illuminationSpotLight(p, diffuseColor, specularColor, specularPower, n);
+    vec3 spotLight = illuminationSpotLight(p, diffuseColor, specularColor, specularPower, n);
 
-    Color = vec4(spotLights, 1.0);
+    Color = vec4(spotLight, 1.0);
 }
