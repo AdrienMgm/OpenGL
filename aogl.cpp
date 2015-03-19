@@ -71,7 +71,7 @@ struct PointLight
     int padding;
     glm::vec3 color;
     float intensity;
-    glm::mat4 worldToLightScreen;
+    glm::mat4 worldToLightScreen[6];
 };
 
 struct DirectionalLight
@@ -214,6 +214,12 @@ int main( int argc, char **argv )
     GLuint directionalLightFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "directionalLight.frag");
     GLuint shadowMapVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "shadowMap.vert");
     GLuint shadowMapFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "shadowMap.frag");
+    GLuint shadowCubeMapVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "shadowCubeMap.vert");
+    GLuint shadowCubeMapGeomShaderId = compile_shader_from_file(GL_GEOMETRY_SHADER, "shadowCubeMap.geom");
+    GLuint shadowCubeMapFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "shadowCubeMap.frag");
+    GLuint skyboxVertShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "skybox.vert");
+    // GLuint skyboxGeomShaderId = compile_shader_from_file(GL_VERTEX_SHADER, "skybox.geom");
+    GLuint skyboxFragShaderId = compile_shader_from_file(GL_FRAGMENT_SHADER, "skybox.frag");
     
     GLuint programObject = glCreateProgram();
     glAttachShader(programObject, vertShaderId);
@@ -246,11 +252,26 @@ int main( int argc, char **argv )
     glAttachShader(programShadowMap, shadowMapFragShaderId);
     glLinkProgram(programShadowMap);
 
+    GLuint programShadowCubeMap = glCreateProgram();
+    glAttachShader(programShadowCubeMap, shadowCubeMapVertShaderId);
+    glAttachShader(programShadowCubeMap, shadowCubeMapGeomShaderId);
+    glAttachShader(programShadowCubeMap, shadowCubeMapFragShaderId);
+    glLinkProgram(programShadowCubeMap);
+
+    GLuint programSkybox = glCreateProgram();
+    glAttachShader(programSkybox, skyboxVertShaderId);
+    // glAttachShader(programSkybox, skyboxGeomShaderId);
+    glAttachShader(programSkybox, skyboxFragShaderId);
+    glLinkProgram(programSkybox);
+
     if (check_link_error(programObject) < 0 &&
         check_link_error(programBlit) < 0 &&
         check_link_error(programPointLight) < 0 &&
         check_link_error(programDirectionalLight) < 0 &&
-        check_link_error(programSpotLight) < 0)
+        check_link_error(programSpotLight) < 0 &&
+        check_link_error(programShadowMap) < 0 &&
+        check_link_error(programShadowCubeMap) < 0 &&
+        check_link_error(programSkybox) < 0)
         exit(1);
 
     //////////////////////////////////////////////////////
@@ -334,9 +355,9 @@ int main( int argc, char **argv )
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
     glBufferData(GL_ARRAY_BUFFER, sizeof(plane_uvs), plane_uvs, GL_STATIC_DRAW);
 
-    //////////
-    // Quad //
-    //////////
+    ///////////////////
+    // Quad / Screen //
+    ///////////////////
     int quad_triangleCount = 2;
     int quad_triangleList[] = {0, 1, 2, 2, 1, 3};
     float quad_vertices[] = {-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0};
@@ -352,6 +373,9 @@ int main( int argc, char **argv )
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT)*2, (void*)0);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 
+    ////////////////////
+    //  SSBO - Lights //
+    ////////////////////
     // Generate Shader Storage Objects
     GLuint ssbo[3];
     glGenBuffers(3, ssbo);
@@ -363,6 +387,9 @@ int main( int argc, char **argv )
     float maxPointLightCount = 10;
     float maxDirectionalLightCount = 10;
     float maxSpotLightCount = 10;
+
+    //Skybox
+    float hasSkybox = 0;
 
     ///////////////////////////////////////////////////
     //  TEXTURES
@@ -419,8 +446,9 @@ int main( int argc, char **argv )
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     // Create shadow texture
-    int shadowMapSize = 1024;
-    int shadowMapCount = maxPointLightCount + maxSpotLightCount + maxDirectionalLightCount;
+    int shadowMapSize = 128;
+
+    int shadowMapCount = maxSpotLightCount + maxDirectionalLightCount;
 
     GLuint shadowMapTextures[shadowMapCount];
     glGenTextures(shadowMapCount, shadowMapTextures);
@@ -428,8 +456,6 @@ int main( int argc, char **argv )
     for (int i = 0; i < shadowMapCount; ++i)
     {
         glBindTexture(GL_TEXTURE_2D, shadowMapTextures[i]);
-        // Create empty texture
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
         // Bilinear filtering
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -439,6 +465,32 @@ int main( int argc, char **argv )
         // Params to shadowMap
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+        // Create empty texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    }
+
+    int shadowCubeMapCount = maxPointLightCount;
+
+    GLuint shadowCubeMapTextures[shadowCubeMapCount];
+    glGenTextures(shadowCubeMapCount, shadowCubeMapTextures);
+
+    for (int i = 0; i < shadowCubeMapCount; ++i)
+    {
+        glBindTexture(GL_TEXTURE_CUBE_MAP, shadowCubeMapTextures[i]);
+        // Bilinear filtering
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        // Params to shadowMap
+        // glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        // glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+
+        for (int face = 0; face < 6; ++face)
+            // Create empty texture faces
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
     }
 
     ////////////////////
@@ -476,18 +528,21 @@ int main( int argc, char **argv )
     GLuint shadowRenderBuffer;
     glGenRenderbuffers(1, &shadowRenderBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, shadowRenderBuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB, shadowMapSize, shadowMapSize);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, shadowMapSize, shadowMapSize);
+    
     // Attach the renderbuffer
-    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, shadowRenderBuffer);
+    glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, shadowRenderBuffer);
 
     // Attach the first shadow texture to the depth attachment
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X, shadowCubeMapTextures[0], 0);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
       fprintf(stderr, "Error on building shadow framebuffer\n");
       exit( EXIT_FAILURE );
     }
+
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
     // Back to the default framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -507,10 +562,11 @@ int main( int argc, char **argv )
     GLuint pl_colorBufferLocation = glGetUniformLocation(programPointLight, "ColorBuffer");
     GLuint pl_normalBufferLocation = glGetUniformLocation(programPointLight, "NormalBuffer");
     GLuint pl_depthBufferLocation = glGetUniformLocation(programPointLight, "DepthBuffer");
-    GLuint pl_shadowMapLocation = glGetUniformLocation(programPointLight, "ShadowMap");
+    GLuint pl_shadowCubeMapLocation = glGetUniformLocation(programPointLight, "ShadowCubeMap");
     GLuint pl_IdLocation = glGetUniformLocation(programPointLight, "Id");
     GLuint pl_cameraPositionLocation = glGetUniformLocation(programPointLight, "CameraPosition");
-    GLuint pl_screenToWorldLocation = glGetUniformLocation(programPointLight, "ScreenToWorld");
+    GLuint pl_inverseProjLocation = glGetUniformLocation(programPointLight, "InverseProj");
+    GLuint pl_mvpLocation = glGetUniformLocation(programPointLight, "MVP");
     // DirectionalLight
     GLuint dl_colorBufferLocation = glGetUniformLocation(programDirectionalLight, "ColorBuffer");
     GLuint dl_normalBufferLocation = glGetUniformLocation(programDirectionalLight, "NormalBuffer");
@@ -518,7 +574,7 @@ int main( int argc, char **argv )
     GLuint dl_shadowMapLocation = glGetUniformLocation(programDirectionalLight, "ShadowMap");
     GLuint dl_IdLocation = glGetUniformLocation(programPointLight, "Id");
     GLuint dl_cameraPositionLocation = glGetUniformLocation(programDirectionalLight, "CameraPosition");
-    GLuint dl_screenToWorldLocation = glGetUniformLocation(programDirectionalLight, "ScreenToWorld");
+    GLuint dl_inverseProjLocation = glGetUniformLocation(programDirectionalLight, "InverseProj");
     // SpotLight
     GLuint sl_colorBufferLocation = glGetUniformLocation(programSpotLight, "ColorBuffer");
     GLuint sl_normalBufferLocation = glGetUniformLocation(programSpotLight, "NormalBuffer");
@@ -526,9 +582,14 @@ int main( int argc, char **argv )
     GLuint sl_shadowMapLocation = glGetUniformLocation(programSpotLight, "ShadowMap");
     GLuint sl_IdLocation = glGetUniformLocation(programPointLight, "Id");
     GLuint sl_cameraPositionLocation = glGetUniformLocation(programSpotLight, "CameraPosition");
-    GLuint sl_screenToWorldLocation = glGetUniformLocation(programSpotLight, "ScreenToWorld");
+    GLuint sl_inverseProjLocation = glGetUniformLocation(programSpotLight, "InverseProj");
     // ShadowMap
     GLuint objectToLightScreenLocation = glGetUniformLocation(programShadowMap, "ObjectToLightScreen");
+    // ShadowCubeMap
+    GLuint objectToLightScreen2Location = glGetUniformLocation(programShadowCubeMap, "ObjectToLightScreen");
+    // Skybox
+    GLuint skybox_mvpLocation = glGetUniformLocation(programSkybox, "MVP");
+    GLuint skybox_cubeMapLocation = glGetUniformLocation(programSkybox, "cubeMap");
 
     // Objects
     glProgramUniform1i(programObject, diffuseLocation, 0);
@@ -632,10 +693,12 @@ int main( int argc, char **argv )
         glm::mat4 objectToWorld;
         glm::mat4 mvp = projection * worldToView * objectToWorld;
         // Compute the inverse worldToScreen matrix
-        glm::mat4 screenToWorld = glm::transpose(glm::inverse(mvp));
+        glm::mat4 inverseProj = glm::inverse(mvp);
 
         // Send transformations
         glProgramUniformMatrix4fv(programObject, mvpLocation, 1, 0, glm::value_ptr(mvp));
+        glProgramUniformMatrix4fv(programPointLight, pl_mvpLocation, 1, 0, glm::value_ptr(mvp));
+        glProgramUniformMatrix4fv(programSkybox, skybox_mvpLocation, 1, 0, glm::value_ptr(mvp));
 
         // Send camera position
         glProgramUniform3f(programPointLight, pl_cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
@@ -643,14 +706,19 @@ int main( int argc, char **argv )
         glProgramUniform3f(programSpotLight, sl_cameraPositionLocation, camera.eye.x, camera.eye.y, camera.eye.z);
 
         // screen to world space
-        glProgramUniformMatrix4fv(programPointLight, pl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
-        glProgramUniformMatrix4fv(programDirectionalLight, dl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
-        glProgramUniformMatrix4fv(programSpotLight, sl_screenToWorldLocation, 1, 0, glm::value_ptr(screenToWorld));
+        glProgramUniformMatrix4fv(programPointLight, pl_inverseProjLocation, 1, 0, glm::value_ptr(inverseProj));
+        glProgramUniformMatrix4fv(programDirectionalLight, dl_inverseProjLocation, 1, 0, glm::value_ptr(inverseProj));
+        glProgramUniformMatrix4fv(programSpotLight, sl_inverseProjLocation, 1, 0, glm::value_ptr(inverseProj));
 
-        //////////////////////////////////////////////////
-        //  Buffer Storage : Lights & Renders ShadowMap //
-        //////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////
+        //  Buffer Storage : Lights & Renders ShadooooooooooowMap //
+        ////////////////////////////////////////////////////////////
+        int pointLightBufferSize = 4 * sizeof(int) + sizeof(PointLight) * pointLightCount;
+        int directionalLightBufferSize = 4 * sizeof(int) + sizeof(DirectionalLight) * directionalLightCount;
+        int spotLightBufferSize = 4 * sizeof(int) + sizeof(SpotLight) * spotLightCount;
+
         glEnable(GL_DEPTH_TEST);
+
         // Bind the shadow FBO
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
 
@@ -660,15 +728,9 @@ int main( int argc, char **argv )
         // Clear only the depth buffer
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(programShadowMap);
-
-        int pointLightBufferSize = 4 * sizeof(int) + sizeof(PointLight) * pointLightCount;
-        int directionalLightBufferSize = 4 * sizeof(int) + sizeof(DirectionalLight) * directionalLightCount;
-        int spotLightBufferSize = 4 * sizeof(int) + sizeof(SpotLight) * spotLightCount;
-
         void * lightBuffer = NULL;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
+        glUseProgram(programShadowCubeMap);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[0]);
         glBufferData(GL_SHADER_STORAGE_BUFFER, pointLightBufferSize, 0, GL_DYNAMIC_COPY);
@@ -676,43 +738,90 @@ int main( int argc, char **argv )
         ((int*) lightBuffer)[0] = pointLightCount;
         for (int i = 0; i < pointLightCount; ++i)
         {
-            glm::vec3 pos(cos(t), 3, sin(t));
+            glm::vec3 pos(cos(t+6), 2.5f, sin(t+6));
+            // glm::vec3 pos(2.f, .5f, 0.f);
+            glm::vec3 color(fabsf(cos(i*2.f)), 1.-fabsf(sinf(i)) , 0.5f + 0.5f-fabsf(cosf(i)));
             // Light space matrices
             // From light space to shadow map screen space
-            glm::mat4 projectionLight = glm::perspective(glm::radians(45*2.f), 1.f, 1.f, 100.f);
-            // From world to light
-            glm::mat4 worldToLight = glm::lookAt(pos, pos + glm::vec3(0, -1, 0), glm::vec3(0.f, 0.f, -1.f));
-            // From object to light
-            glm::mat4 objectToLight = worldToLight * objectToWorld;
-            // From object to shadow map screen space
-            glm::mat4 objectToLightScreen = projectionLight * objectToLight;
-            // From world to shadow map screen space 
-            glm::mat4 worldToLightScreen = projectionLight * worldToLight;
+            glm::mat4 projectionLight = glm::perspective(glm::radians(90.f), 1.f, 1.f, 100.f);
 
-            glProgramUniformMatrix4fv(programShadowMap, objectToLightScreenLocation, 1, 0, glm::value_ptr(objectToLightScreen));
+            // From world to light
+            glm::mat4 worldToLight;
+            glm::mat4 objectToWorld;
+            // From object to light
+            glm::mat4 objectToLight;
+            // From object to shadow map screen space
+            glm::mat4 objectToLightScreen[6];
+            // From world to shadow map screen space 
+            glm::mat4 worldToLightScreen[6];
+
+            // Edge X
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[0] = projectionLight * objectToLight;
+            worldToLightScreen[0] = projectionLight * worldToLight;
+            // Edge - X
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(-1.f, 0.f, 0.f), glm::vec3(0.f, -1.f, 0.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[1] = projectionLight * objectToLight;
+            worldToLightScreen[1] = projectionLight * worldToLight;
+            // Edge Y
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(0.f, 1.f, 0.f), glm::vec3(0.f, 0.f, 1.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[2] = projectionLight * objectToLight;
+            worldToLightScreen[2] = projectionLight * worldToLight;
+            // Edge - Y
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(0.f, -1.f, 0.f), glm::vec3(0.f, 0.f, -1.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[3] = projectionLight * objectToLight;
+            worldToLightScreen[3] = projectionLight * worldToLight;
+            // Edge Z
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(0.f, 0.f, 1.f), glm::vec3(0.f, -1.f, 0.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[4] = projectionLight * objectToLight;
+            worldToLightScreen[4] = projectionLight * worldToLight;
+            // Edge - Z
+            worldToLight = glm::lookAt(pos, pos + glm::vec3(0.f, 0.f, -1.f), glm::vec3(0.f, -1.f, 0.f));
+            objectToLight = worldToLight * objectToWorld;
+            objectToLightScreen[5] = projectionLight * objectToLight;
+            worldToLightScreen[5] = projectionLight * worldToLight;
+
+            glProgramUniformMatrix4fv(programShadowCubeMap, objectToLightScreen2Location, 6, 0, glm::value_ptr(objectToLightScreen[0]));
 
             PointLight p =
             {
                 pos, 0,
-                glm::vec3(fabsf(cos(i*2.f)), 1.-fabsf(sinf(i)) , 0.5f + 0.5f-fabsf(cosf(i))),
+                color,
                 1.0,
-                worldToLightScreen
+                {
+                    worldToLightScreen[0],
+                    worldToLightScreen[1],
+                    worldToLightScreen[2],
+                    worldToLightScreen[3],
+                    worldToLightScreen[4],
+                    worldToLightScreen[5]
+                }
             };
             ((PointLight*) ((int*) lightBuffer + 4))[i] = p;
 
-            // Attach the shadow texture to the depth attachment
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTextures[i], 0);
-            // Clear only the depth buffer
-            glClear(GL_DEPTH_BUFFER_BIT);
+            // for(int face = 0; face < 6; ++face)
+            {
+                // Attach the shadow texture to the depth attachment
+                // glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, shadowCubeMapTextures[i], 0);
+                glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadowCubeMapTextures[0], 0);
+                // Clear only the depth buffer
+                glClear(GL_DEPTH_BUFFER_BIT);
 
-            // Render vaos
-            glBindVertexArray(vao[0]);
-            glDrawElementsInstanced(GL_TRIANGLES, cube_triangleCount * 3, GL_UNSIGNED_INT, (void*)0, 1);
-            glBindVertexArray(vao[1]);
-            glDrawElements(GL_TRIANGLES, plane_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+                // Render vaos
+                glBindVertexArray(vao[0]);
+                glDrawElementsInstanced(GL_TRIANGLES, cube_triangleCount * 3, GL_UNSIGNED_INT, (void*)0, 1);
+                glBindVertexArray(vao[1]);
+                glDrawElements(GL_TRIANGLES, plane_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
+            }
         }
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
+        glUseProgram(programShadowMap);
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[1]);
         glBufferData(GL_SHADER_STORAGE_BUFFER, directionalLightBufferSize, 0, GL_DYNAMIC_COPY);
@@ -869,17 +978,33 @@ int main( int argc, char **argv )
         glBindTexture(GL_TEXTURE_2D, textures[3]);
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, textures[4]);
-        for(int i = 0; i < shadowMapCount; ++i)
+
+        for(int i = 0; i < shadowCubeMapCount; ++i)
         {
             glActiveTexture(GL_TEXTURE0 + 3 + i);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, shadowCubeMapTextures[i]);
+        }
+
+        for(int i = 0; i < shadowMapCount; ++i)
+        {
+            glActiveTexture(GL_TEXTURE0 + 3 + shadowCubeMapCount + i);
             glBindTexture(GL_TEXTURE_2D, shadowMapTextures[i]);
+        }
+
+        // Skybox render
+        glUseProgram(programSkybox);
+        if (hasSkybox > 0)
+        {
+            glProgramUniform1i(programSkybox, skybox_cubeMapLocation, 3);
+            glBindVertexArray(vao[0]);
+            glDrawElementsInstanced(GL_TRIANGLES, cube_triangleCount * 3, GL_UNSIGNED_INT, (void*)0, 1);
         }
 
         // PointLight render
         glUseProgram(programPointLight);
         for (int i = 0; i < pointLightCount; ++i)
         {
-            glProgramUniform1i(programPointLight, pl_shadowMapLocation, 3 + i);
+            glProgramUniform1i(programPointLight, pl_shadowCubeMapLocation, 3 + i);
             glProgramUniform1i(programPointLight, pl_IdLocation, i);
             glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         }
@@ -888,7 +1013,7 @@ int main( int argc, char **argv )
         glUseProgram(programDirectionalLight);
         for (int i = 0; i < directionalLightCount; ++i)
         {
-            glProgramUniform1i(programDirectionalLight, dl_shadowMapLocation, 3 + static_cast<int>(pointLightCount) + i);
+            glProgramUniform1i(programDirectionalLight, dl_shadowMapLocation, 3 + static_cast<int>(shadowCubeMapCount) + i);
             glProgramUniform1i(programDirectionalLight, dl_IdLocation, i);
             glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         }
@@ -897,7 +1022,7 @@ int main( int argc, char **argv )
         glUseProgram(programSpotLight);
         for (int i = 0; i < spotLightCount; ++i)
         {
-            glProgramUniform1i(programSpotLight, sl_shadowMapLocation, 3 + static_cast<int>(pointLightCount + directionalLightCount) + i);
+            glProgramUniform1i(programSpotLight, sl_shadowMapLocation, 3 + static_cast<int>(shadowCubeMapCount + directionalLightCount) + i);
             glProgramUniform1i(programSpotLight, sl_IdLocation, i);
             glDrawElements(GL_TRIANGLES, quad_triangleCount * 3, GL_UNSIGNED_INT, (void*)0);
         }
@@ -956,6 +1081,7 @@ int main( int argc, char **argv )
         imguiBeginScrollArea("aogl", width - 210, height - 310, 200, 300, &logScroll);
         sprintf(lineBuffer, "FPS %f", fps);
         imguiLabel(lineBuffer);
+        imguiSlider("Has Skybox", &hasSkybox, 0, 1, 1);
         imguiSlider("Nb PointLights", &pointLightCount, 0, maxPointLightCount, 1);
         imguiSlider("Nb DirectionalLight", &directionalLightCount, 0, maxDirectionalLightCount, 1);
         imguiSlider("Nb SpotLight", &spotLightCount, 0, maxSpotLightCount, 1);

@@ -6,11 +6,16 @@
 
 layout(location = POSITION) in vec3 Position;
 
-uniform mat4 ObjectToLightScreen;
+out block
+{
+	vec3 Position;
+} Out;
 
 void main()
 {	
 	vec3 pos = Position;
 
-	gl_Position = ObjectToLightScreen * vec4(pos, 1.0);
+	Out.Position = pos;
+
+	gl_Position = vec4(pos, 1.0);
 }

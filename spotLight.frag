@@ -1,6 +1,11 @@
 #version 430 core
 #extension GL_ARB_shader_storage_buffer_object : require
 
+const float PI = 3.14159265359;
+const float TWOPI = 6.28318530718;
+const float PI_2 = 1.57079632679;
+const float DEG2RAD = TWOPI / 360.0;
+
 in block
 {
     vec2 Texcoord;
@@ -10,9 +15,11 @@ uniform sampler2D ColorBuffer;
 uniform sampler2D NormalBuffer;
 uniform sampler2D DepthBuffer;
 
-uniform mat4 ScreenToWorld;
+uniform mat4 InverseProj;
 
 uniform sampler2DShadow ShadowMap;
+
+layout(location = 0, index = 0) out vec4 Color;
 
 uniform int Id;
 
@@ -34,8 +41,6 @@ layout(std430, binding = 2) buffer spotlights
     int count;
     SpotLight Lights[];
 } SpotLights;
-
-layout(location = 0) out vec4 Color;
 
 vec2 poissonDisk[16] = vec2[](
     vec2( -0.94201624, -0.39906216 ),
@@ -127,8 +132,8 @@ void main(void)
 
     // Convert texture coordinates into screen space coordinates
     vec2 xy = In.Texcoord * 2.0 - 1.0;
-    // Convert depth to -1,1 range and multiply the point by ScreenToWorld matrix
-    vec4 wP = vec4(xy, depth * 2.0 -1.0, 1.0) * ScreenToWorld;
+    // Convert depth to -1,1 range and multiply the point by InverseProj matrix
+    vec4 wP = InverseProj * vec4(xy, depth * 2.0 -1.0, 1.0);
     // Divide by w
     vec3 p = vec3(wP.xyz / wP.w);
 

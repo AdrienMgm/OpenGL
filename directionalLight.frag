@@ -10,7 +10,7 @@ uniform sampler2D ColorBuffer;
 uniform sampler2D NormalBuffer;
 uniform sampler2D DepthBuffer;
 
-uniform mat4 ScreenToWorld;
+uniform mat4 InverseProj;
 
 uniform sampler2DShadow ShadowMap;
 
@@ -76,24 +76,25 @@ vec3 illuminationDirectionalLight(vec3 positionObject, vec3 diffuseColor, vec3 s
     vec3 specular = specularColor * pow(ndoth, specularPower);
     vec3 color = (diffuseColor * ndotl * DirectionalLights.Lights[Id].color * DirectionalLights.Lights[Id].intensity) + (specular * DirectionalLights.Lights[Id].intensity);
 
-    if (any(greaterThan(color, vec3(0.001))))
-    {
-        // Echantillonnage de Poisson
-        float shadowDepth = 0.0;
-        const int SampleCount = 4;
-        const float samplesf = SampleCount;
-        const float Spread = 1000.0;
+    float shadowDepth = textureProj(ShadowMap, vec4(lP.xy, lP.z -0.005, 1.0), 0.0);
+    // if (any(greaterThan(color, vec3(0.001))))
+    // {
+    //     // Echantillonnage de Poisson
+    //     float shadowDepth = 0.0;
+    //     const int SampleCount = 4;
+    //     const float samplesf = SampleCount;
+    //     const float Spread = 1000.0;
 
-        for (int i=0;i<SampleCount;i++)
-        {
-            int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
-            shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
-        }
+    //     for (int i=0;i<SampleCount;i++)
+    //     {
+    //         int index = int(samplesf*random(vec4(gl_FragCoord.xyy, i)))%SampleCount;
+    //         shadowDepth += textureProj(ShadowMap, vec4(lP.xy + poissonDisk[index]/(Spread * 1.f/distance), lP.z -0.005, 1.0), 0.0) / samplesf;
+    //     }
 
-        color *= shadowDepth;
-    }
+    //     color *= shadowDepth;
+    // }
 
-    return color;
+    return vec3(shadowDepth);
 }
 
 
@@ -112,8 +113,8 @@ void main(void)
 
     // Convert texture coordinates into screen space coordinates
     vec2 xy = In.Texcoord * 2.0 - 1.0;
-    // Convert depth to -1,1 range and multiply the point by ScreenToWorld matrix
-    vec4 wP = vec4(xy, depth * 2.0 -1.0, 1.0) * ScreenToWorld;
+    // Convert depth to -1,1 range and multiply the point by InverseProj matrix
+    vec4 wP = InverseProj * vec4(xy, depth * 2.0 -1.0, 1.0);
     // Divide by w
     vec3 p = vec3(wP.xyz / wP.w);
 
